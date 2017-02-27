@@ -29,7 +29,6 @@ To solve the problem, tow scripts are used:
 * The task (_>= windows 7_) needs to run with the user `S-1-5-18` (System)
 ![](img/task01.png)
 * The task needs to run every hour of every day for ever.
-![](img/task02.png)
 * The task needs to run `powershell -exec bypass -nop -File \\dom.lo\Sysvol\dom.lo\scripts\ZT-ExportLogFWToCalculator.ps1`
 ![](img/task03.png)
 
