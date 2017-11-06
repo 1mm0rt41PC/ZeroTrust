@@ -63,6 +63,9 @@ function FWRemoveBadRules
 # Get file content even with file lock
 function getFile( [string] $pFilename )
 {
+	if( (Get-Item $pFilename).length -le 0 ){
+		return ''
+	}
 	$tmp1 = cat -ErrorAction SilentlyContinue $pFilename
 	if( [String]::IsNullOrWhiteSpace($tmp1) ){
 		Write-Host ">    [!] log is empty !? Trying to copy the file to temp"
@@ -83,10 +86,15 @@ head "Forward firewall log"
 ###############################################################################
 # Move logs
 $rotateFile = "${REMOTE_database}\${env:COMPUTERNAME}_${date}_pfirewall.log"
-$tmpMerge = ("{0}\system32\logfiles\firewall\ZeroTrust_{1}.merge" -f $env:windir, (-join ((65..90) + (97..122) | Get-Random -Count 12 | % {[char]$_})))
 $wfLog = '';
 $isFile = 0
-@("pfirewall.log","pfirewall.log.old","ZeroTrust.staging") | foreach {
+# Rotate logs to avoid locked files
+netsh advfirewall set allprofiles logging filename "%systemroot%\system32\LogFiles\Firewall\pfirewall.log-2.staging"
+mv -Force $env:systemroot\system32\LogFiles\Firewall\pfirewall.log $env:systemroot\system32\LogFiles\Firewall\pfirewall.log.staging -ErrorAction SilentlyContinue
+mv -Force $env:systemroot\system32\LogFiles\Firewall\pfirewall.log.old $env:systemroot\system32\LogFiles\Firewall\pfirewall.log.old.staging -ErrorAction SilentlyContinue
+netsh advfirewall set allprofiles logging filename "%systemroot%\system32\LogFiles\Firewall\pfirewall.log"
+
+@("pfirewall.log.staging","pfirewall.log.old.staging","pfirewall.log-2.staging","pfirewall.log-2.old.staging","ZeroTrust.staging") | foreach {
 	$log = "${env:windir}\system32\logfiles\firewall\$_"
 	Write-Host "[*] Reading $log"
 	if( [System.IO.File]::Exists($log) ){
@@ -95,19 +103,10 @@ $isFile = 0
 			$wfLog += getFile $log
 			Write-Host ">    [*] Data grabbed"
 		}catch{
-			Write-Host ">    [!] log is empty !? Trying to temporary disable the firewall"
-			# Stop firewall
-			netsh advfirewall set allprofiles state off | Out-Null
-			try {
-				$wfLog += getFile $log
-			}catch{}
-			Write-Host ">    [*] Data grabbed"
 		}
 		$wfLog += "`r`n"
 		Write-Host ">    [*] Remove / Clear old log"
-		try{
-			echo '' | Out-File -ErrorAction SilentlyContinue -FilePath $log -Encoding ascii
-		}catch{}
+		rm -Force -ErrorAction SilentlyContinue $log
 	}else{
 		Write-Host ">    [!] File not found !"
 	}
@@ -121,6 +120,20 @@ if( $isFile -gt 0 ){
 }else{
 	echo "Log are not enabled !!! logs doesn't exist" | Out-File -FilePath "${rotateFile}.LOG-NOT-ENABLED" -Encoding ASCII
 }
+
+
+
+###############################################################################
+head "Enable firewall evt logging"
+#   Modification de la stratégie de plateforme de filtrage,{0CCE9233-69AE-11D9-BED3-505054503030}
+auditpol /set /subcategory:"{0CCE9233-69AE-11D9-BED3-505054503030}" /success:enable /failure:disable
+
+#   Rejet de paquet par la plateforme de filtrage,{0CCE9225-69AE-11D9-BED3-505054503030} == "Filtering Platform Packet Drop"
+auditpol /set /subcategory:"{0CCE9225-69AE-11D9-BED3-505054503030}" /success:enable /failure:disable
+
+#   Connexion de la plateforme de filtrage,{0CCE9226-69AE-11D9-BED3-505054503030} == "Filtering Platform Connection"
+auditpol /set /subcategory:"{0CCE9226-69AE-11D9-BED3-505054503030}" /success:enable /failure:disable
+
 
 
 ###############################################################################
